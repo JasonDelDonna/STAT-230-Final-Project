@@ -1,0 +1,197 @@
+---
+title: "FinalProject"
+author: "Jason Del Donna"
+---
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+```
+
+Is there correlation between internet access and GDP per capita in countries from 2013 to 2023?
+
+Does Urbanization in a country lead to higher Internet Usage?
+
+```{r}
+gdp <- read_csv("API_NY.GDP.PCAP.CD_DS2_en_csv_v2_19346.csv", skip = 4)
+net_use <- read_csv("WB_WDI_IT_NET_USER_ZS.csv")
+urban <- read_csv("API_SP.URB.TOTL.IN.ZS_DS2_en_csv_v2_19523.csv", skip = 4)
+
+gdp_all <- gdp %>%
+  filter(`Indicator Name` == "GDP per capita (current US$)") %>%
+  select(`Country Name`, `2013`:`2023`) %>%
+  pivot_longer(
+    cols = `2013`:`2023`,
+    names_to = "Year",
+    values_to = "GDP_per_capita"
+  ) %>%
+  mutate(
+    Year = as.numeric(Year),
+    GDP_per_capita = as.numeric(GDP_per_capita)
+  ) %>%
+  filter(!is.na(GDP_per_capita))
+
+ggplot(gdp_all, aes(x = factor(Year), y = GDP_per_capita)) +
+  geom_boxplot(fill = "lightblue", color = "darkblue") +
+  labs(
+    title = "Global GDP per Capita (2013–2023)",
+    x = "Year",
+    y = "GDP per Capita (USD)"
+  ) +
+  theme_minimal()
+
+gdp_filtered <- gdp %>%
+  filter(`Indicator Name` == "GDP per capita (current US$)",
+         `Country Name` %in% c("China", "Afghanistan", "United States")) %>%
+  select(`Country Name`, `2013`:`2023`) %>%
+  pivot_longer(
+    cols = `2013`:`2023`,
+    names_to = "Year",
+    values_to = "GDP_per_capita"
+  ) %>%
+  mutate(
+    Year = as.numeric(Year),
+    GDP_per_capita = as.numeric(GDP_per_capita)
+  ) %>%
+  filter(!is.na(GDP_per_capita))
+
+ggplot(gdp_filtered, aes(x = factor(Year), y = GDP_per_capita, fill = `Country Name`)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(
+    title = "GDP per Capita (2013–2023): China, Afghanistan, USA",
+    x = "Year",
+    y = "GDP per Capita (USD)",
+    fill = "Country"
+  ) +
+  theme_minimal()
+
+gdp_summary <- gdp_filtered %>%
+  group_by(`Country Name`) %>%
+  summarise(
+    Mean = mean(GDP_per_capita, na.rm = TRUE),
+    SD = sd(GDP_per_capita, na.rm = TRUE),
+    Min = min(GDP_per_capita, na.rm = TRUE),
+    Max = max(GDP_per_capita, na.rm = TRUE)
+  )
+print(gdp_summary)
+
+net_use_all <- net_use %>%
+  filter(
+    INDICATOR_NAME == "Individuals using the Internet (% of population)",
+    TIME_PERIOD >= 2013,
+    TIME_PERIOD <= 2023,
+    !is.na(OBS_VALUE)
+  )
+
+ggplot(net_use_all, aes(x = factor(TIME_PERIOD), y = OBS_VALUE)) +
+  geom_boxplot(fill = "pink", color = "black") +
+  labs(
+    title = "Global Internet Usage (% of Population) by Year",
+    x = "Year",
+    y = "Internet Usage (% of Population)"
+  ) +
+  theme_minimal()
+
+net_filtered <- net_use %>%
+  filter(
+    REF_AREA_NAME %in% c("Afghanistan", "United States", "China"),
+    INDICATOR_NAME == "Individuals using the Internet (% of population)",
+    TIME_PERIOD >= 2013,
+    TIME_PERIOD <= 2023,
+    !is.na(OBS_VALUE)
+  )
+
+ggplot(net_filtered, aes(x = factor(TIME_PERIOD), y = OBS_VALUE, fill = REF_AREA_NAME)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(
+    title = "Internet Usage (2013–2023): China, Afghanistan, USA",
+    x = "Year",
+    y = "Internet Usage (% of Population)",
+    fill = "Country"
+  ) +
+  theme_minimal()
+
+net_results <- net_filtered %>%
+  group_by(REF_AREA_NAME) %>%
+  summarise(
+    mean_usage = mean(OBS_VALUE, na.rm = TRUE),
+    sd_usage = sd(OBS_VALUE, na.rm = TRUE),
+    min_usage = min(OBS_VALUE, na.rm = TRUE),
+    max_usage = max(OBS_VALUE, na.rm = TRUE)
+  )
+print(net_results)
+
+net2 <- net_use_all %>%
+  rename(
+    `Country Name` = REF_AREA_NAME,
+    Year = TIME_PERIOD,
+    Internet_Usage = OBS_VALUE
+  )
+
+merged_data <- left_join(
+  net2,
+  gdp_all,
+  by = c("Country Name", "Year")
+)
+
+cor_test_result <- cor.test(
+  merged_data$Internet_Usage,
+  merged_data$GDP_per_capita,
+  use = "complete.obs",
+  method = "pearson"
+)
+print(cor_test_result)
+
+ggplot(merged_data, aes(x = Internet_Usage, y = GDP_per_capita)) +
+  geom_point(alpha = 0.7, color = "darkgreen") +
+  geom_smooth(method = "lm", se = TRUE, color = "blue", linewidth = 1) +
+  labs(
+    title = "Correlation Between Internet Usage and GDP per Capita",
+    x = "Internet Usage (% of Population)",
+    y = "GDP per Capita (USD)"
+  ) +
+  theme_minimal()
+
+urban_filtered <- urban %>%
+  pivot_longer(cols = `2013`:`2023`, names_to = "Year", values_to = "Urban_Population") %>%
+  mutate(Year = as.integer(Year))
+
+ggplot(urban_filtered, aes(x = factor(Year), y = Urban_Population)) +
+  geom_boxplot(fill = "lightgreen") +
+  labs(title = "Global Urbanization (2013–2023)",
+       x = "Year", y = "Urban Population (% of Total)") +
+  theme_minimal()
+
+urban_countries <- urban_filtered %>%
+  filter(`Country Name` %in% c("United States", "China", "Afghanistan"))
+
+ggplot(urban_countries, aes(x = factor(Year), y = Urban_Population, fill = `Country Name`)) +
+  geom_col(position = "dodge") +
+  labs(title = "Urbanization in USA, China, and Afghanistan (2013–2023)",
+       x = "Year", y = "Urban Population (%)") +
+  theme_minimal()
+
+merged_urban_net <- left_join(net2, urban_filtered,
+                              by = c("Country Name", "Year"))
+
+urban_clean <- merged_urban_net %>%
+  filter(!is.na(Internet_Usage), !is.na(Urban_Population))
+
+cor_test_result <- cor.test(urban_clean$Internet_Usage, urban_clean$Urban_Population)
+print(cor_test_result)
+
+ggplot(urban_clean, aes(x = Urban_Population, y = Internet_Usage)) +
+  geom_point(alpha = 0.6, color = "darkgreen") +
+  geom_smooth(method = "lm", se = TRUE, color = "blue") +
+  labs(
+    title = "Scatterplot: Urbanization vs. Internet Usage",
+    x = "Urban Population (% of Total)",
+    y = "Internet Usage (% of Population)"
+  ) +
+  theme_minimal()
+```
+
+The research from the first question has led me to believe there is a strong correlation between internet usage and GDP per capita. I find this surprising because of how readily available computers and laptops have become over the last decade. However I see now that the amount of electronics may not correlate to having the infrastructure needed for internet access. Within that global chart, I decided to use the USA, China and Afghanistan as example countries since they represent first, second and third world countries that act as controls. I didn't choose to go for more obscure options since there wasn't much for outliers anyways.
+The second question was to build off the first to see if Urbanization was a bigger cause for Internet Usage or not. According to the correlation tests between the two data sets, it would appear so that there is an even stronger correlation between Urbanization and Internet Usage. It could be the case that the more countries require network access like having so many people together, the more focus they will put into it rather than the monetary value a country possesses. I find it to be much more reliant on the Urban population and Infrastructure that the country has developed.
+
+
